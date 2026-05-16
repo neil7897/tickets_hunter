@@ -316,24 +316,30 @@ async def nodriver_pchome_main(tab, url, config_dict):
             _state["purchase_done"] = True
         return
 
+    # PChome 真實購物車 URL: ecssl.pchome.com.tw/fsrwd/cart 或 /cart/
+    is_cart_url = '/fsrwd/cart' in url or '/cart/' in url or url.endswith('/cart')
+    # PChome 真實結帳 URL: ecssl.pchome.com.tw/checkout/ 或 /checkout/
+    is_checkout_url = '/checkout/' in url or '/checkout' in url
+
     # 結帳頁（填 CVV + 送出）
-    if '/checkout/' in url and 'result' not in url:
+    if is_checkout_url and 'result' not in url and 'complete' not in url:
         if not _state["checkout_handled"]:
             await _handle_checkout(tab, config_dict)
             _state["checkout_handled"] = True
         return
 
     # 購物車頁（點擊「去結帳」）
-    if '/cart/' in url:
+    if is_cart_url:
         if not _state["cart_handled"]:
             await _handle_cart(tab, config_dict)
             _state["cart_handled"] = True
         return
 
     # 已點擊，若尚未進入購物車/結帳頁，一律導向購物車（PChome 加入購物車後會跳回首頁）
-    if _state["clicked"] and not _state["cart_handled"] and '/cart/' not in url and '/checkout/' not in url:
+    if _state["clicked"] and not _state["cart_handled"] and not is_cart_url and not is_checkout_url:
+        debug.log(f"[PCHOME] 已點擊，導向購物車 (目前 URL={url})")
         await asyncio.sleep(2.0)
-        await tab.get("https://24h.pchome.com.tw/cart/v3/index.htm")
+        await tab.get("https://ecssl.pchome.com.tw/fsrwd/cart")
         return
 
     # 商品頁
