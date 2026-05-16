@@ -6,6 +6,7 @@ import asyncio
 import random
 import time
 
+
 import util
 from nodriver_common import (
     check_and_handle_pause,
@@ -24,6 +25,7 @@ _state = {
     "signed_in": False,
     "purchase_done": False,
     "last_button_state": None,
+    "last_check_time": 0,
 }
 
 
@@ -144,6 +146,11 @@ async def nodriver_shopee_main(tab, url, config_dict):
 
     if await check_and_handle_pause(config_dict):
         return
+
+    now = time.time()
+    if now - _state["last_check_time"] < 2.0:
+        return
+    _state["last_check_time"] = now
 
     # 登入頁
     if await _is_login_page(tab):

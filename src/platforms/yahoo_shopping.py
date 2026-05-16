@@ -4,6 +4,7 @@
 
 import asyncio
 import random
+import time
 
 import util
 from nodriver_common import (
@@ -23,6 +24,7 @@ _state = {
     "purchase_done": False,
     "last_button_text": None,
     "clicked": False,
+    "last_check_time": 0,
 }
 
 
@@ -151,6 +153,11 @@ async def nodriver_yahoo_shopping_main(tab, url, config_dict):
 
     if await check_and_handle_pause(config_dict):
         return
+
+    now = time.time()
+    if now - _state["last_check_time"] < 2.0:
+        return
+    _state["last_check_time"] = now
 
     if await _is_login_page(tab):
         if not _state["signed_in"]:
