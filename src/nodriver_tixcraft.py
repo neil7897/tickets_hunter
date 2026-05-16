@@ -898,7 +898,7 @@ async def main(args):
         if 'momoshop.com.tw' in url or 'momo.com.tw' in url:
             await nodriver_momo_main(tab, url, config_dict)
 
-        if 'pchome.com.tw' in url:
+        if 'pchome.com.tw' in url or 'ecvip.pchome.com.tw' in url:
             await nodriver_pchome_main(tab, url, config_dict)
 
         if 'tw.buy.yahoo.com' in url or 'buy.yahoo.com.tw' in url:

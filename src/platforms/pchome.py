@@ -29,7 +29,9 @@ _state = {
 async def _is_login_page(tab):
     result = await evaluate_with_pause_check(tab, """
         (function() {
-            return window.location.href.includes('member.pchome.com.tw') ||
+            var url = window.location.href;
+            return url.includes('ecvip.pchome.com.tw/login') ||
+                   url.includes('member.pchome.com.tw') ||
                    document.querySelector('#loginId') !== null ||
                    document.querySelector('input[name="loginId"]') !== null;
         })()
@@ -46,24 +48,47 @@ async def _do_login(tab, config_dict):
         return
 
     debug.log(f"[PCHOME] 自動登入: {account}")
-    await asyncio.sleep(random.uniform(0.5, 1.0))
+    await asyncio.sleep(random.uniform(1.0, 1.5))
 
-    await evaluate_with_pause_check(tab, f"""
+    # 填帳號
+    filled = await evaluate_with_pause_check(tab, f"""
         (function() {{
-            var id = document.querySelector('#loginId, input[name="loginId"]');
-            if (id) {{ id.value = {repr(account)}; id.dispatchEvent(new Event('input', {{bubbles:true}})); }}
-            var pw = document.querySelector('#loginPwd, input[name="loginPwd"], input[type="password"]');
-            if (pw) {{ pw.value = {repr(password)}; pw.dispatchEvent(new Event('input', {{bubbles:true}})); }}
+            var id = document.querySelector('#loginId, input[name="loginId"], input[type="email"], input[type="text"]');
+            if (id) {{
+                id.focus();
+                id.value = {repr(account)};
+                id.dispatchEvent(new Event('input', {{bubbles:true}}));
+                id.dispatchEvent(new Event('change', {{bubbles:true}}));
+                return true;
+            }}
+            return false;
         }})()
     """)
-    await asyncio.sleep(random.uniform(0.3, 0.5))
+    debug.log(f"[PCHOME] 帳號填入: {filled}")
+    await asyncio.sleep(random.uniform(0.5, 0.8))
 
+    # 填密碼
+    await evaluate_with_pause_check(tab, f"""
+        (function() {{
+            var pw = document.querySelector('#loginPwd, input[name="loginPwd"], input[type="password"]');
+            if (pw) {{
+                pw.focus();
+                pw.value = {repr(password)};
+                pw.dispatchEvent(new Event('input', {{bubbles:true}}));
+                pw.dispatchEvent(new Event('change', {{bubbles:true}}));
+            }}
+        }})()
+    """)
+    await asyncio.sleep(random.uniform(0.5, 0.8))
+
+    # 點登入按鈕
     await evaluate_with_pause_check(tab, """
         (function() {
             var btn = document.querySelector('#loginSubmit, button[type="submit"]') ||
                       Array.from(document.querySelectorAll('button, input[type="submit"]'))
                           .find(b => (b.textContent || b.value || '').includes('登入'));
-            if (btn) btn.click();
+            if (btn) { btn.click(); return true; }
+            return false;
         })()
     """)
     debug.log("[PCHOME] 已送出登入")
