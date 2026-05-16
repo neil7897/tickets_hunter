@@ -235,6 +235,15 @@ async def _handle_checkout(tab, config_dict):
 
     # Step 2: 填 CVV（CVV 欄位在選完信用卡後才出現）
     if cvv:
+        # 先 log 現在所有 input 的狀態，確認 CVV 欄位
+        all_inputs = await evaluate_with_pause_check(tab, """
+            (function() {
+                return Array.from(document.querySelectorAll('input[type="text"],input[type="tel"],input[type="number"],input[type="password"]'))
+                    .map(i => ({id:i.id, name:i.name, placeholder:i.placeholder, maxLength:i.maxLength, visible: i.offsetParent !== null}));
+            })()
+        """)
+        debug.log(f"[PCHOME] 選 CC 後 inputs: {all_inputs}")
+
         filled = await evaluate_with_pause_check(tab, f"""
             (function() {{
                 var candidates = [
@@ -246,20 +255,23 @@ async def _handle_checkout(tab, config_dict):
                     document.querySelector('input[placeholder*="安全碼"]'),
                     document.querySelector('input[placeholder*="卡片"]'),
                     document.querySelector('input[placeholder*="背面"]'),
+                    document.querySelector('input[placeholder*="末三碼"]'),
+                    document.querySelector('input[placeholder*="末四碼"]'),
                 ];
                 var cvvInput = candidates.find(i => i != null);
                 if (!cvvInput) {{
                     cvvInput = Array.from(document.querySelectorAll('input[type="text"],input[type="tel"],input[type="number"],input[type="password"]'))
                         .find(i => i.maxLength === 3 || i.maxLength === 4);
                 }}
-                if (cvvInput) {{
-                    cvvInput.focus();
-                    cvvInput.value = {repr(cvv)};
-                    cvvInput.dispatchEvent(new Event('input', {{bubbles:true}}));
-                    cvvInput.dispatchEvent(new Event('change', {{bubbles:true}}));
-                    return true;
-                }}
-                return false;
+                if (!cvvInput) return 'not_found';
+                // React native setter（避免 React 忽略直接賦值）
+                var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                nativeSetter.call(cvvInput, {repr(cvv)});
+                cvvInput.focus();
+                cvvInput.dispatchEvent(new Event('input', {{bubbles:true}}));
+                cvvInput.dispatchEvent(new Event('change', {{bubbles:true}}));
+                cvvInput.dispatchEvent(new KeyboardEvent('keyup', {{bubbles:true}}));
+                return 'filled:' + cvvInput.placeholder + '|id=' + cvvInput.id + '|max=' + cvvInput.maxLength;
             }})()
         """)
         debug.log(f"[PCHOME] CVV 填入: {filled}")
