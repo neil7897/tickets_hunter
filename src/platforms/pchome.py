@@ -101,37 +101,23 @@ async def _do_login(tab, config_dict):
 async def _get_buy_button(tab):
     return await evaluate_with_pause_check(tab, """
         (function() {
+            // PChome 24h 使用 data-regression 標記購買按鈕
             var selectors = [
-                '#buy-btn',
-                '.buy-btn',
-                'button[id*="buy"]',
-                'a[id*="buy"]',
-                '#btn-buy',
-                '.btn-buy',
-                'button[class*="buy"]',
+                'button[data-regression="product_button_buyNow"]',
+                'button[data-regression="product_button_addToCart"]',
+                '#buy-btn', '.buy-btn', '#btn-buy', '.btn-buy',
             ];
             for (var s of selectors) {
                 var el = document.querySelector(s);
                 if (el) {
-                    return {
-                        found: true,
-                        disabled: el.disabled || el.classList.contains('disabled') ||
-                                  el.classList.contains('no-stock') || el.textContent.trim().includes('缺貨'),
-                        text: el.textContent.trim()
-                    };
+                    var soldOut = el.disabled ||
+                                  el.classList.contains('disabled') ||
+                                  el.classList.contains('no-stock') ||
+                                  el.textContent.trim().includes('缺貨') ||
+                                  el.textContent.trim().includes('售完') ||
+                                  el.textContent.trim().includes('補貨中');
+                    return { found: true, disabled: soldOut, text: el.textContent.trim() };
                 }
-            }
-            var allBtns = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
-            var buyBtn = allBtns.find(b =>
-                (b.textContent || b.value || '').includes('立即購買') ||
-                (b.textContent || b.value || '').includes('加入購物車')
-            );
-            if (buyBtn) {
-                return {
-                    found: true,
-                    disabled: buyBtn.disabled || buyBtn.classList.contains('disabled') || buyBtn.classList.contains('no-stock'),
-                    text: (buyBtn.textContent || buyBtn.value || '').trim()
-                };
             }
             return { found: false, disabled: true, text: '' };
         })()
@@ -148,7 +134,11 @@ async def _click_buy(tab, config_dict):
                 el.dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
                 el.dispatchEvent(new MouseEvent('click', {bubbles:true}));
             }
-            var selectors = ['#buy-btn', '.buy-btn', '#btn-buy', '.btn-buy', 'button[class*="buy"]'];
+            var selectors = [
+                'button[data-regression="product_button_buyNow"]',
+                'button[data-regression="product_button_addToCart"]',
+                '#buy-btn', '.buy-btn', '#btn-buy', '.btn-buy',
+            ];
             for (var s of selectors) {
                 var el = document.querySelector(s);
                 if (el && !el.disabled && !el.classList.contains('disabled') && !el.classList.contains('no-stock')) {
@@ -156,11 +146,6 @@ async def _click_buy(tab, config_dict):
                     return el.textContent.trim();
                 }
             }
-            var btn = Array.from(document.querySelectorAll('button, a')).find(b =>
-                ((b.textContent || '').includes('立即購買') || (b.textContent || '').includes('加入購物車')) &&
-                !b.disabled && !b.classList.contains('disabled')
-            );
-            if (btn) { fireClick(btn); return btn.textContent.trim(); }
             return null;
         })()
     """)
