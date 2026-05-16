@@ -247,14 +247,15 @@ async def _handle_checkout(tab, config_dict):
         filled = await evaluate_with_pause_check(tab, f"""
             (function() {{
                 var candidates = [
+                    document.querySelector('input[placeholder="CVC"]'),
+                    document.querySelector('input[placeholder="CVV"]'),
                     document.querySelector('#cvv'),
                     document.querySelector('input[name="cvv"]'),
                     document.querySelector('input[name="CVV"]'),
                     document.querySelector('input[placeholder*="CVV"]'),
                     document.querySelector('input[placeholder*="cvv"]'),
+                    document.querySelector('input[placeholder*="CVC"]'),
                     document.querySelector('input[placeholder*="安全碼"]'),
-                    document.querySelector('input[placeholder*="卡片"]'),
-                    document.querySelector('input[placeholder*="背面"]'),
                     document.querySelector('input[placeholder*="末三碼"]'),
                     document.querySelector('input[placeholder*="末四碼"]'),
                 ];
@@ -325,7 +326,8 @@ async def nodriver_pchome_main(tab, url, config_dict):
         return
 
     # 訂單完成頁
-    if '/checkout/result' in url or '/order/complete' in url or 'orderComplete' in url or 'thankYou' in url:
+    if ('/checkout/result' in url or '/order/complete' in url or 'orderComplete' in url
+            or 'thankYou' in url or '/cflow/fsm/result' in url):
         if not _state["purchase_done"]:
             debug.log("[PCHOME] 訂單完成！")
             play_sound_while_ordering(config_dict)
