@@ -195,6 +195,24 @@ async def _handle_checkout(tab, config_dict):
     cvv = config_dict.get("accounts", {}).get("pchome_cvv", "")
     await asyncio.sleep(random.uniform(1.5, 2.0))
 
+    # 偵測頁面 DOM 結構（debug 用）
+    dom_info = await evaluate_with_pause_check(tab, """
+        (function() {
+            var radios = Array.from(document.querySelectorAll('input[type="radio"]')).map(r => ({
+                id: r.id, name: r.name, value: r.value, checked: r.checked,
+                label: (r.closest('label') || r.parentElement || {}).textContent.trim().substring(0,50)
+            }));
+            var inputs = Array.from(document.querySelectorAll('input[type="text"],input[type="tel"],input[type="number"],input[type="password"]')).map(i => ({
+                id: i.id, name: i.name, placeholder: i.placeholder, maxLength: i.maxLength
+            }));
+            var btns = Array.from(document.querySelectorAll('button,input[type="submit"]')).map(b => ({
+                id: b.id, cls: b.className.substring(0,40), text: (b.textContent||b.value||'').trim().substring(0,30)
+            }));
+            return { radios: radios, inputs: inputs, btns: btns };
+        })()
+    """)
+    debug.log(f"[PCHOME] payinfo DOM: {dom_info}")
+
     # 選擇「信用卡一次付清」
     await evaluate_with_pause_check(tab, """
         (function() {
@@ -316,10 +334,11 @@ async def nodriver_pchome_main(tab, url, config_dict):
             _state["purchase_done"] = True
         return
 
-    # PChome 真實購物車 URL: ecssl.pchome.com.tw/fsrwd/cart 或 /cart/
-    is_cart_url = '/fsrwd/cart' in url or '/cart/' in url or url.endswith('/cart')
-    # PChome 真實結帳 URL: ecssl.pchome.com.tw/checkout/ 或 /checkout/
-    is_checkout_url = '/checkout/' in url or '/checkout' in url
+    # PChome 真實購物車 URL: ecssl.pchome.com.tw/fsrwd/cart
+    is_cart_url = (('/fsrwd/cart' in url or '/cart/' in url or url.endswith('/cart'))
+                   and '/payinfo' not in url and '/confirm' not in url)
+    # PChome 真實結帳 URL: /fsrwd/cart/payinfo 或 /checkout/
+    is_checkout_url = '/payinfo' in url or '/checkout/' in url or '/confirm' in url
 
     # 結帳頁（填 CVV + 送出）
     if is_checkout_url and 'result' not in url and 'complete' not in url:
