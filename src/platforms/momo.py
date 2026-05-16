@@ -22,6 +22,7 @@ _state = {
     "signed_in": False,
     "purchase_done": False,
     "last_button_text": None,
+    "clicked": False,
 }
 
 
@@ -167,6 +168,8 @@ async def nodriver_momo_main(tab, url, config_dict):
             if text != _state["last_button_text"]:
                 debug.log(f"[MOMO] 按鈕: {text} (disabled={disabled})")
                 _state["last_button_text"] = text
-            if not disabled:
-                await _click_buy(tab, config_dict)
-                await asyncio.sleep(random.uniform(0.3, 0.6))
+            if not disabled and not _state["clicked"]:
+                success = await _click_buy(tab, config_dict)
+                if success:
+                    _state["clicked"] = True
+                await asyncio.sleep(random.uniform(1.0, 1.5))

@@ -22,6 +22,7 @@ _state = {
     "signed_in": False,
     "purchase_done": False,
     "last_button_text": None,
+    "clicked": False,
 }
 
 
@@ -166,6 +167,12 @@ async def nodriver_pchome_main(tab, url, config_dict):
             _state["purchase_done"] = True
         return
 
+    # 已點擊，導向購物車等待結帳
+    if _state["clicked"] and '/prod/' in url:
+        await asyncio.sleep(2.0)
+        await tab.get("https://24h.pchome.com.tw/cart/v3/index.htm")
+        return
+
     # 商品頁
     if '/prod/' in url or '/DCPC' in url or 'goodsDetail' in url:
         btn = await _get_buy_button(tab)
@@ -175,6 +182,8 @@ async def nodriver_pchome_main(tab, url, config_dict):
             if text != _state["last_button_text"]:
                 debug.log(f"[PCHOME] 按鈕: {text} (disabled={disabled})")
                 _state["last_button_text"] = text
-            if not disabled:
-                await _click_buy(tab, config_dict)
-                await asyncio.sleep(random.uniform(0.3, 0.6))
+            if not disabled and not _state["clicked"]:
+                success = await _click_buy(tab, config_dict)
+                if success:
+                    _state["clicked"] = True
+                await asyncio.sleep(random.uniform(1.0, 1.5))
