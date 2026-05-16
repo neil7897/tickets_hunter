@@ -195,24 +195,6 @@ async def _handle_checkout(tab, config_dict):
     cvv = config_dict.get("accounts", {}).get("pchome_cvv", "")
     await asyncio.sleep(random.uniform(1.5, 2.0))
 
-    # 偵測頁面 DOM 結構（debug 用）
-    dom_info = await evaluate_with_pause_check(tab, """
-        (function() {
-            var radios = Array.from(document.querySelectorAll('input[type="radio"]')).map(r => ({
-                id: r.id, name: r.name, value: r.value, checked: r.checked,
-                label: (r.closest('label') || r.parentElement || {}).textContent.trim().substring(0,50)
-            }));
-            var inputs = Array.from(document.querySelectorAll('input[type="text"],input[type="tel"],input[type="number"],input[type="password"]')).map(i => ({
-                id: i.id, name: i.name, placeholder: i.placeholder, maxLength: i.maxLength
-            }));
-            var btns = Array.from(document.querySelectorAll('button,input[type="submit"]')).map(b => ({
-                id: b.id, cls: b.className.substring(0,40), text: (b.textContent||b.value||'').trim().substring(0,30)
-            }));
-            return { radios: radios, inputs: inputs, btns: btns };
-        })()
-    """)
-    debug.log(f"[PCHOME] payinfo DOM: {dom_info}")
-
     # Step 1: 選擇「信用卡一次付清」(id='CC')
     selected = await evaluate_with_pause_check(tab, """
         (function() {
@@ -235,15 +217,6 @@ async def _handle_checkout(tab, config_dict):
 
     # Step 2: 填 CVV（CVV 欄位在選完信用卡後才出現）
     if cvv:
-        # 先 log 現在所有 input 的狀態，確認 CVV 欄位
-        all_inputs = await evaluate_with_pause_check(tab, """
-            (function() {
-                return Array.from(document.querySelectorAll('input[type="text"],input[type="tel"],input[type="number"],input[type="password"]'))
-                    .map(i => ({id:i.id, name:i.name, placeholder:i.placeholder, maxLength:i.maxLength, visible: i.offsetParent !== null}));
-            })()
-        """)
-        debug.log(f"[PCHOME] 選 CC 後 inputs: {all_inputs}")
-
         filled = await evaluate_with_pause_check(tab, f"""
             (function() {{
                 var candidates = [
@@ -364,7 +337,6 @@ async def nodriver_pchome_main(tab, url, config_dict):
     # 商品頁
     if '/prod/' in url or '/DCPC' in url or 'goodsDetail' in url:
         btn = await _get_buy_button(tab)
-        debug.log(f"[PCHOME] _get_buy_button → {btn}")
         if btn and btn.get("found"):
             text = btn.get("text", "")
             disabled = btn.get("disabled", True)
@@ -373,9 +345,6 @@ async def nodriver_pchome_main(tab, url, config_dict):
                 _state["last_button_text"] = text
             if not disabled and not _state["clicked"]:
                 success = await _click_buy(tab, config_dict)
-                debug.log(f"[PCHOME] _click_buy → {success}")
                 if success:
                     _state["clicked"] = True
                 await asyncio.sleep(random.uniform(1.0, 1.5))
-        else:
-            debug.log(f"[PCHOME] 找不到購買按鈕，URL={url}")
