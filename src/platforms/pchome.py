@@ -345,8 +345,8 @@ async def nodriver_pchome_main(tab, url, config_dict):
             _state["cart_handled"] = True
         return
 
-    # 已點擊商品頁，導向購物車
-    if _state["clicked"] and '/prod/' in url:
+    # 已點擊，若尚未進入購物車/結帳頁，一律導向購物車（PChome 加入購物車後會跳回首頁）
+    if _state["clicked"] and not _state["cart_handled"] and '/cart/' not in url and '/checkout/' not in url:
         await asyncio.sleep(2.0)
         await tab.get("https://24h.pchome.com.tw/cart/v3/index.htm")
         return
