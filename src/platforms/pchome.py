@@ -112,11 +112,17 @@ async def _click_buy(tab, config_dict):
     debug = util.create_debug_logger(config_dict)
     clicked = await evaluate_with_pause_check(tab, """
         (function() {
+            function fireClick(el) {
+                el.click();
+                el.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+                el.dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
+                el.dispatchEvent(new MouseEvent('click', {bubbles:true}));
+            }
             var selectors = ['#buy-btn', '.buy-btn', '#btn-buy', '.btn-buy', 'button[class*="buy"]'];
             for (var s of selectors) {
                 var el = document.querySelector(s);
                 if (el && !el.disabled && !el.classList.contains('disabled') && !el.classList.contains('no-stock')) {
-                    el.click();
+                    fireClick(el);
                     return el.textContent.trim();
                 }
             }
@@ -124,15 +130,15 @@ async def _click_buy(tab, config_dict):
                 ((b.textContent || '').includes('立即購買') || (b.textContent || '').includes('加入購物車')) &&
                 !b.disabled && !b.classList.contains('disabled')
             );
-            if (btn) { btn.click(); return btn.textContent.trim(); }
+            if (btn) { fireClick(btn); return btn.textContent.trim(); }
             return null;
         })()
     """)
     if clicked:
         debug.log(f"[PCHOME] 已點擊: {clicked}")
         play_sound_while_ordering(config_dict)
-        send_discord_notification(config_dict, "[PChome] 已點擊購買按鈕，請手動完成結帳！")
-        send_telegram_notification(config_dict, "[PChome] 已點擊購買按鈕，請手動完成結帳！")
+        send_discord_notification(config_dict, "ticket", "PChome")
+        send_telegram_notification(config_dict, "ticket", "PChome")
         return True
     return False
 

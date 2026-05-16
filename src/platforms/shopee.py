@@ -132,8 +132,8 @@ async def _handle_checkout(tab, config_dict):
     """)
     debug.log("[SHOPEE] 已點擊結帳，請手動完成付款")
     play_sound_while_ordering(config_dict)
-    send_discord_notification(config_dict, "[蝦皮] 已進入結帳頁面，請手動完成付款！")
-    send_telegram_notification(config_dict, "[蝦皮] 已進入結帳頁面，請手動完成付款！")
+    send_discord_notification(config_dict, "ticket", "Shopee")
+    send_telegram_notification(config_dict, "ticket", "Shopee")
 
 
 async def nodriver_shopee_main(tab, url, config_dict):

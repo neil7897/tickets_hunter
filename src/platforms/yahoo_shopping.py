@@ -136,8 +136,8 @@ async def _click_buy(tab, config_dict):
     if clicked:
         debug.log(f"[YAHOO] 已點擊: {clicked}")
         play_sound_while_ordering(config_dict)
-        send_discord_notification(config_dict, "[Yahoo購物] 已點擊購買按鈕，請手動完成結帳！")
-        send_telegram_notification(config_dict, "[Yahoo購物] 已點擊購買按鈕，請手動完成結帳！")
+        send_discord_notification(config_dict, "ticket", "Yahoo購物")
+        send_telegram_notification(config_dict, "ticket", "Yahoo購物")
         return True
     return False
 

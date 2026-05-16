@@ -152,8 +152,8 @@ async def _click_buy(tab, config_dict):
     if clicked:
         debug.log(f"[KOMODO] 已點擊: {clicked}")
         play_sound_while_ordering(config_dict)
-        send_discord_notification(config_dict, f"[KOMODO] 已點擊購買按鈕「{clicked}」，請手動完成結帳！")
-        send_telegram_notification(config_dict, f"[KOMODO] 已點擊購買按鈕「{clicked}」，請手動完成結帳！")
+        send_discord_notification(config_dict, "ticket", "KOMODO")
+        send_telegram_notification(config_dict, "ticket", "KOMODO")
         return True
     return False
 
