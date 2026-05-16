@@ -984,11 +984,14 @@ def get_extension_config(config_dict, args=None):
     return conf
 
 def nodriver_overwrite_prefs(conf):
-    print(f"[PROFILE] nodriver_overwrite_prefs 寫入: {conf.user_data_dir}")
     prefs_filepath = os.path.join(conf.user_data_dir,"Default")
     if not os.path.exists(prefs_filepath):
         os.mkdir(prefs_filepath)
     prefs_filepath = os.path.join(prefs_filepath,"Preferences")
+
+    # 若 Preferences 已存在（代表有既有 profile），不覆寫以保留登入狀態
+    if os.path.exists(prefs_filepath):
+        return
 
     prefs_dict = {
         "credentials_enable_service": False,
