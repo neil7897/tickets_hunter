@@ -52,6 +52,11 @@ from platforms.tixcraft import *
 from platforms.ibon import *
 from platforms.kham import *
 from platforms.hkticketing import *
+from platforms.shopee import *
+from platforms.momo import *
+from platforms.pchome import *
+from platforms.yahoo_shopping import *
+from platforms.komodo import *
 
 CONST_CITYLINE_SIGN_IN_URL = "https://www.cityline.com/Login.html?targetUrl=https%3A%2F%2Fwww.cityline.com%2FEvents.html"
 CONST_FAMI_SIGN_IN_URL = "https://www.famiticket.com.tw/Home/User/SignIn"
@@ -885,6 +890,22 @@ async def main(args):
         facebook_login_url = 'https://www.facebook.com/login.php?'
         if url[:len(facebook_login_url)]==facebook_login_url:
             await nodriver_facebook_main(tab, config_dict)
+
+        # 購物平台
+        if 'shopee.tw' in url:
+            await nodriver_shopee_main(tab, url, config_dict)
+
+        if 'momoshop.com.tw' in url or 'momo.com.tw' in url:
+            await nodriver_momo_main(tab, url, config_dict)
+
+        if 'pchome.com.tw' in url:
+            await nodriver_pchome_main(tab, url, config_dict)
+
+        if 'tw.buy.yahoo.com' in url or 'buy.yahoo.com.tw' in url:
+            await nodriver_yahoo_shopping_main(tab, url, config_dict)
+
+        if 'komodostation.com' in url:
+            await nodriver_komodo_main(tab, url, config_dict)
 
 def cli():
     parser = argparse.ArgumentParser(
