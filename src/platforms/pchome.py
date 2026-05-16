@@ -339,6 +339,7 @@ async def nodriver_pchome_main(tab, url, config_dict):
     # 商品頁
     if '/prod/' in url or '/DCPC' in url or 'goodsDetail' in url:
         btn = await _get_buy_button(tab)
+        debug.log(f"[PCHOME] _get_buy_button → {btn}")
         if btn and btn.get("found"):
             text = btn.get("text", "")
             disabled = btn.get("disabled", True)
@@ -347,6 +348,9 @@ async def nodriver_pchome_main(tab, url, config_dict):
                 _state["last_button_text"] = text
             if not disabled and not _state["clicked"]:
                 success = await _click_buy(tab, config_dict)
+                debug.log(f"[PCHOME] _click_buy → {success}")
                 if success:
                     _state["clicked"] = True
                 await asyncio.sleep(random.uniform(1.0, 1.5))
+        else:
+            debug.log(f"[PCHOME] 找不到購買按鈕，URL={url}")
