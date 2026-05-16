@@ -213,45 +213,43 @@ async def _handle_checkout(tab, config_dict):
     """)
     debug.log(f"[PCHOME] payinfo DOM: {dom_info}")
 
-    # 選擇「信用卡一次付清」
-    await evaluate_with_pause_check(tab, """
+    # Step 1: 選擇「信用卡一次付清」(id='CC')
+    selected = await evaluate_with_pause_check(tab, """
         (function() {
-            var radios = Array.from(document.querySelectorAll('input[type="radio"]'));
-            var creditOnce = radios.find(r => {
-                var parent = r.closest('label') || r.parentElement;
-                var txt = parent ? (parent.textContent || '') : '';
-                return txt.includes('一次付清') || (r.value || '').toLowerCase().includes('credit');
-            });
-            if (creditOnce && !creditOnce.checked) {
-                creditOnce.click();
-                creditOnce.dispatchEvent(new Event('change', {bubbles:true}));
-                return;
+            var cc = document.querySelector('#CC');
+            if (cc && !cc.checked) {
+                cc.click();
+                cc.dispatchEvent(new Event('change', {bubbles:true}));
+                return 'clicked #CC';
             }
-            // 嘗試 label 文字點擊
-            var labels = Array.from(document.querySelectorAll('label'));
-            var lbl = labels.find(l => (l.textContent || '').includes('一次付清'));
-            if (lbl) lbl.click();
+            if (cc && cc.checked) return 'already checked';
+            // fallback: 找 label 包含「一次付清」
+            var lbl = Array.from(document.querySelectorAll('label')).find(l => l.textContent.includes('一次付清'));
+            if (lbl) { lbl.click(); return 'clicked label'; }
+            return null;
         })()
     """)
-    await asyncio.sleep(random.uniform(0.5, 0.8))
+    debug.log(f"[PCHOME] 選付款方式: {selected}")
+    # 等 CVV 欄位出現
+    await asyncio.sleep(random.uniform(1.5, 2.0))
 
-    # 填 CVV
+    # Step 2: 填 CVV（CVV 欄位在選完信用卡後才出現）
     if cvv:
         filled = await evaluate_with_pause_check(tab, f"""
             (function() {{
-                var inputs = [
+                var candidates = [
                     document.querySelector('#cvv'),
                     document.querySelector('input[name="cvv"]'),
                     document.querySelector('input[name="CVV"]'),
                     document.querySelector('input[placeholder*="CVV"]'),
                     document.querySelector('input[placeholder*="cvv"]'),
                     document.querySelector('input[placeholder*="安全碼"]'),
-                    document.querySelector('input[placeholder*="卡片安全碼"]'),
+                    document.querySelector('input[placeholder*="卡片"]'),
+                    document.querySelector('input[placeholder*="背面"]'),
                 ];
-                var cvvInput = inputs.find(i => i !== null);
+                var cvvInput = candidates.find(i => i != null);
                 if (!cvvInput) {{
-                    // 用 maxlength 3 or 4 找 CVV 欄位（信用卡安全碼）
-                    cvvInput = Array.from(document.querySelectorAll('input[type="text"], input[type="tel"], input[type="number"]'))
+                    cvvInput = Array.from(document.querySelectorAll('input[type="text"],input[type="tel"],input[type="number"],input[type="password"]'))
                         .find(i => i.maxLength === 3 || i.maxLength === 4);
                 }}
                 if (cvvInput) {{
@@ -267,7 +265,7 @@ async def _handle_checkout(tab, config_dict):
         debug.log(f"[PCHOME] CVV 填入: {filled}")
         await asyncio.sleep(random.uniform(0.3, 0.5))
 
-    # 送出訂單
+    # Step 3: 點擊「確認付款」
     submitted = await evaluate_with_pause_check(tab, """
         (function() {
             function fireClick(el) {
@@ -276,21 +274,9 @@ async def _handle_checkout(tab, config_dict):
                 el.dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
                 el.dispatchEvent(new MouseEvent('click', {bubbles:true}));
             }
-            var selectors = [
-                '#submit-order',
-                '.submit-order',
-                'button[id*="submit"]',
-                'button[class*="submit"]',
-                'button[class*="place-order"]',
-                'button[class*="placeOrder"]',
-            ];
-            for (var s of selectors) {
-                var el = document.querySelector(s);
-                if (el && !el.disabled) { fireClick(el); return el.textContent.trim(); }
-            }
-            var keywords = ['確認下單','送出訂單','立即下單','完成結帳','確認購買','提交訂單'];
+            var keywords = ['確認付款','確認下單','送出訂單','立即下單','完成結帳','確認購買','提交訂單'];
             var btn = Array.from(document.querySelectorAll('button, input[type="submit"]')).find(b =>
-                keywords.some(k => (b.textContent || b.value || '').includes(k))
+                keywords.some(k => (b.textContent || b.value || '').trim().includes(k))
             );
             if (btn && !btn.disabled) { fireClick(btn); return (btn.textContent || btn.value || '').trim(); }
             return null;
@@ -302,7 +288,7 @@ async def _handle_checkout(tab, config_dict):
         send_discord_notification(config_dict, "order", "PChome")
         send_telegram_notification(config_dict, "order", "PChome")
     else:
-        debug.log("[PCHOME] 找不到送出按鈕，請手動完成")
+        debug.log("[PCHOME] 找不到送出按鈕")
 
 
 async def nodriver_pchome_main(tab, url, config_dict):
