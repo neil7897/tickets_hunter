@@ -972,8 +972,12 @@ def get_extension_config(config_dict, args=None):
         print("[ERROR] Please install Chrome manually or check your internet connection.")
         raise FileNotFoundError("Could not find or download Chrome browser")
 
+    # 使用固定的設定檔目錄，保留 cookie 與登入狀態
+    profile_dir = os.path.join(app_root, "webdriver", "profile")
+    os.makedirs(profile_dir, exist_ok=True)
+
     # Normal mode: auto-detect (host=None, port=None) to let NoDriver start the browser
-    conf = Config(browser_args=browser_args, sandbox=sandbox, headless=config_dict["advanced"]["headless"], browser_executable_path=chrome_path)
+    conf = Config(browser_args=browser_args, sandbox=sandbox, headless=config_dict["advanced"]["headless"], browser_executable_path=chrome_path, user_data_dir=profile_dir)
     return conf
 
 def nodriver_overwrite_prefs(conf):
