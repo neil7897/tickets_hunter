@@ -11,6 +11,7 @@ __pycache__/
 
 # Sensitive config files
 /src/settings.json
+/src/settings_*.json
 /src/MAXBOT_LAST_URL.txt
 /src/MAXBOT_INT28_IDLE.txt
 /src/MAXBOT_QUESTION.txt
