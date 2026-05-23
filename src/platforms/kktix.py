@@ -85,12 +85,12 @@ async def nodriver_kktix_signin(tab, url, config_dict):
             account = await tab.query_selector("#user_login")
             if account:
                 await account.send_keys(kktix_account)
-                await asyncio.sleep(random.uniform(0.1, 0.2))
+                await asyncio.sleep(random.uniform(0.3, 0.8))
 
             password = await tab.query_selector("#user_password")
             if password:
                 await password.send_keys(kktix_password)
-                await asyncio.sleep(random.uniform(0.1, 0.2))
+                await asyncio.sleep(random.uniform(0.3, 0.8))
 
             await tab.evaluate('''
                 const loginBtn = document.querySelector('input[type="submit"][value="登入"]');

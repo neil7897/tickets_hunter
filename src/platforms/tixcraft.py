@@ -25,6 +25,7 @@ from zendriver import cdp
 import util
 from nodriver_common import (
     check_and_handle_pause,
+    evaluate_with_pause_check,
     sleep_with_pause_check,
     convert_remote_object,
     nodriver_check_checkbox,
@@ -53,6 +54,7 @@ __all__ = [
     "nodriver_ticketmaster_captcha",
     "nodriver_ticketmaster_promo",
     "nodriver_tixcraft_verify",
+    "nodriver_tixcraft_card_prefix_verify",
     "nodriver_fill_verify_form",
     "nodriver_tixcraft_input_check_code",
     "nodriver_tixcraft_date_auto_select",
@@ -699,12 +701,12 @@ async def nodriver_ticketmaster_date_auto_select(tab, config_dict):
                 debug.log("[TICKETMASTER DATE] Clicked 'See Tickets' link")
 
                 # Handle new tab (close if opened)
-                await tab.sleep(0.3)
+                await tab.sleep(0.1)
                 if len(tab.browser.tabs) > 1:
                     # Close extra tabs
                     for extra_tab in tab.browser.tabs[1:]:
                         await extra_tab.close()
-                    await tab.sleep(0.2)
+                    await tab.sleep(0.1)
 
         except Exception as exc:
             debug.log(f"[TICKETMASTER DATE] Failed to click link: {exc}")
@@ -1055,7 +1057,7 @@ async def nodriver_ticketmaster_captcha(tab, config_dict, ocr, captcha_browser):
                     if error_detected:
                         debug.log("[TICKETMASTER CAPTCHA] Captcha error detected, retrying...")
 
-                        await asyncio.sleep(0.3)
+                        await asyncio.sleep(random.uniform(1.0, 2.0))
                         await nodriver_tixcraft_reload_captcha(tab, domain_name)
                         previous_answer = None
                         fail_count = 0
@@ -1155,7 +1157,7 @@ async def nodriver_ticketmaster_captcha(tab, config_dict, ocr, captcha_browser):
                                     debug.log("[TICKETMASTER CAPTCHA] Could not dismiss modal")
 
                             # Reset state for retry
-                            await asyncio.sleep(0.3)
+                            await asyncio.sleep(random.uniform(1.0, 2.0))
 
                             # Reload captcha for new image
                             await nodriver_tixcraft_reload_captcha(tab, domain_name)
@@ -1227,6 +1229,81 @@ async def nodriver_ticketmaster_promo(tab, config_dict, fail_list):
 async def nodriver_tixcraft_verify(tab, config_dict, fail_list):
     question_selector = '.zone-verify'
     return await nodriver_tixcraft_input_check_code(tab, config_dict, fail_list, question_selector)
+
+async def nodriver_tixcraft_card_prefix_verify(tab, config_dict):
+    """自動填入玉山卡友專區信用卡前六碼驗證。
+
+    偵測策略：尋找 maxlength=6 的輸入框，且頁面含有「前六碼」或「信用卡」關鍵字。
+    填入 config_dict["contact"]["credit_card_prefix"]，然後點擊確認按鈕。
+    回傳 True 代表已處理，False 代表未偵測到此驗證頁面。
+    """
+    debug = util.create_debug_logger(config_dict)
+    card_prefix = config_dict.get("contact", {}).get("credit_card_prefix", "")
+    if not card_prefix:
+        return False
+
+    try:
+        result = await tab.evaluate('''
+            (function() {
+                // 確認頁面有「前六碼」或「信用卡」關鍵字
+                const bodyText = document.body ? document.body.innerText : '';
+                const hasKeyword = bodyText.includes('前六碼') || bodyText.includes('信用卡前') || bodyText.includes('卡友');
+                if (!hasKeyword) return {found: false};
+
+                // 找 maxlength=6 的可見輸入框
+                const inputs = Array.from(document.querySelectorAll('input[maxlength="6"], input[maxlength="6"][type="text"], input[maxlength="6"][type="number"]'));
+                const input = inputs.find(el => el.offsetParent !== null && !el.disabled);
+                if (!input) return {found: false};
+
+                return {found: true, id: input.id || '', name: input.name || ''};
+            })()
+        ''')
+        result = util.parse_nodriver_result(result)
+        if not isinstance(result, dict) or not result.get('found'):
+            return False
+
+        debug.log(f"[CARD PREFIX] 偵測到信用卡前六碼驗證頁面，自動填入: {card_prefix}")
+
+        # 填入前六碼
+        filled = await tab.evaluate(f'''
+            (function() {{
+                const inputs = Array.from(document.querySelectorAll('input[maxlength="6"]'));
+                const input = inputs.find(el => el.offsetParent !== null && !el.disabled);
+                if (!input) return false;
+                input.focus();
+                input.value = '{card_prefix}';
+                input.dispatchEvent(new Event('input', {{bubbles: true}}));
+                input.dispatchEvent(new Event('change', {{bubbles: true}}));
+                return true;
+            }})()
+        ''')
+        if not util.parse_nodriver_result(filled):
+            debug.log("[CARD PREFIX] 填入失敗")
+            return False
+
+        await asyncio.sleep(0.3)
+
+        # 點擊確認按鈕（優先找含「確認」「送出」「下一步」的按鈕）
+        clicked = await tab.evaluate('''
+            (function() {
+                const keywords = ['確認', '送出', '下一步', 'Submit', 'Confirm', 'Next'];
+                const btns = Array.from(document.querySelectorAll('button, input[type="submit"], a.btn'));
+                for (const kw of keywords) {
+                    const btn = btns.find(b => b.textContent.includes(kw) && b.offsetParent !== null);
+                    if (btn) { btn.click(); return kw; }
+                }
+                // fallback: 找表單 submit
+                const form = document.querySelector('form');
+                if (form) { form.submit(); return 'form.submit'; }
+                return false;
+            })()
+        ''')
+        debug.log(f"[CARD PREFIX] 已點擊按鈕: {util.parse_nodriver_result(clicked)}")
+        return True
+
+    except Exception as exc:
+        debug.log(f"[CARD PREFIX] 處理異常: {exc}")
+        return False
 
 async def nodriver_fill_verify_form(tab, config_dict, inferred_answer_string, fail_list, input_text_css, next_step_button_css, submit_by_enter, check_input_interval):
     """
@@ -2005,6 +2082,10 @@ async def nodriver_ticket_number_select_fill(tab, select_obj, ticket_number, sel
                     const maxOption = validOptions.reduce((max, opt) =>
                         parseInt(opt.value) > parseInt(max.value) ? opt : max
                     );
+                    // 若最大可選張數 < 目標張數，視為不足，不選直接回傳失敗
+                    if (parseInt(maxOption.value) < parseInt("{ticket_number}")) {{
+                        return {{success: false, error: "insufficient seats: max=" + maxOption.value + " need={ticket_number}"}};
+                    }}
                     select.value = maxOption.value;
                     select.selectedIndex = maxOption.index;
                     select.dispatchEvent(new Event('change', {{bubbles: true}}));
@@ -2077,13 +2158,33 @@ async def nodriver_tixcraft_assign_ticket_number(tab, config_dict):
     valid_ticket_types = []
     sold_out_keywords = ["選購一空", "已售完", "Sold out", "No tickets available", "空席なし", "完売した"]
 
-    # 使用 NoDriver Element API 檢查每個 select 元素
+    # 一次 JS 拿所有 select/option 資訊，避免逐個 await update() 的延遲
+    try:
+        js_select_info = await tab.evaluate('''
+            (function() {
+                const soldOut = ["選購一空","已售完","Sold out","No tickets available","空席なし","完売した"];
+                const sels = Array.from(document.querySelectorAll('.mobile-select, select[id*="TicketForm_ticketPrice_"]'));
+                return sels.map((sel, idx) => ({
+                    id: sel.id || ('select_' + idx),
+                    disabled: sel.disabled,
+                    hasValidOption: Array.from(sel.options).some(o =>
+                        o.value !== "0" && !o.disabled &&
+                        !soldOut.includes(o.value) && !soldOut.includes(o.text.trim())
+                    )
+                }));
+            })()
+        ''')
+        js_select_info = util.parse_nodriver_result(js_select_info) or []
+    except Exception:
+        js_select_info = []
+
+    js_info_map = {item['id']: item for item in js_select_info} if isinstance(js_select_info, list) else {}
+
+    # 使用 NoDriver Element API 取得 select 元素物件（用於後續操作）
     for idx, select_element in enumerate(form_select_list):
         try:
-            # 更新元素以確保屬性載入
+            # 快速取得 id（優先用 JS 預先抓到的資訊）
             await select_element.update()
-
-            # 檢查 select 是否 disabled
             select_attrs = select_element.attrs or {}
             select_id = select_attrs.get('id', f'select_{idx}')
             is_select_disabled = 'disabled' in select_attrs
@@ -2092,31 +2193,9 @@ async def nodriver_tixcraft_assign_ticket_number(tab, config_dict):
                 debug.log(f"[TICKET SELECT] Skipping disabled select: {select_id}")
                 continue
 
-            # 檢查 option 元素
-            option_elements = await select_element.query_selector_all('option')
-            has_valid_option = False
-            option_values = []
-
-            for option_element in option_elements:
-                try:
-                    await option_element.update()
-                    option_attrs = option_element.attrs or {}
-                    option_value = option_attrs.get('value', '')
-                    option_text = option_element.text or ''
-                    option_disabled = 'disabled' in option_attrs
-
-                    option_values.append(option_value)
-
-                    # 檢查是否為有效選項
-                    if (option_value != "0" and
-                        not option_disabled and
-                        option_value not in sold_out_keywords and
-                        option_text not in sold_out_keywords):
-                        has_valid_option = True
-
-                except Exception as opt_exc:
-                    debug.log(f"[TICKET SELECT] Error checking option: {opt_exc}")
-                    continue
+            # 用 JS 預先結果判斷，不再逐個 await option
+            js_info = js_info_map.get(select_id, {})
+            has_valid_option = js_info.get('hasValidOption', False)
 
             if not has_valid_option:
                 debug.log(f"[TICKET SELECT] Skipping select (all options sold out or disabled): {select_id}")
@@ -2837,6 +2916,205 @@ async def nodriver_ticketmaster_check_ip_block(tab, config_dict):
         return False
 
 
+async def _auto_fill_checkout(tab, config_dict):
+    """TixCraft 結帳頁：自動填入信用卡資訊並送出"""
+    debug = util.create_debug_logger(config_dict)
+    contact = config_dict.get("contact", {})
+    card_number = contact.get("credit_card_number", "")
+    card_expiry = contact.get("credit_card_expiry", "")  # MM/YY
+    card_cvv = contact.get("credit_card_cvv", "")
+    card_name = contact.get("credit_card_name", "")
+
+    if not card_number:
+        debug.log("[TIXCRAFT] 未設定信用卡資訊，請手動填寫")
+        return
+
+    import asyncio, random
+    await asyncio.sleep(random.uniform(1.5, 2.0))
+
+    # Step 0a: 選付款方式 radio（CheckoutForm[paymentId]）
+    # 優先找含「信用卡」的選項，否則選第一個
+    payment_selected = await evaluate_with_pause_check(tab, """
+        (function() {
+            function clickRadio(r) {
+                r.click();
+                r.dispatchEvent(new Event('change', {bubbles:true}));
+            }
+            // 找所有 paymentId radio
+            var radios = Array.from(document.querySelectorAll(
+                'input[type="radio"][name*="paymentId"], input[type="radio"][name*="payment_id"], ' +
+                'input[type="radio"][id*="paymentId"], input[type="radio"][id*="payment_id"]'
+            ));
+            if (radios.length === 0) {
+                // 更廣泛的 fallback：所有 radio
+                radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+            }
+            if (radios.length === 0) return 'no_radio';
+
+            // 先找含「信用卡」文字的
+            for (var r of radios) {
+                var lbl = document.querySelector('label[for="' + r.id + '"]');
+                var lblTxt = lbl ? lbl.textContent : (r.parentElement ? r.parentElement.textContent : '');
+                if (lblTxt.includes('信用卡') || lblTxt.includes('Credit')) {
+                    if (!r.checked) clickRadio(r);
+                    return 'credit_card:' + r.value;
+                }
+            }
+            // 沒有信用卡選項，選第一個
+            if (!radios[0].checked) clickRadio(radios[0]);
+            return 'first:' + radios[0].name + '=' + radios[0].value;
+        })()
+    """)
+    debug.log(f"[TIXCRAFT] 選付款方式: {payment_selected}")
+    await asyncio.sleep(random.uniform(0.5, 0.8))
+
+    # Step 0b: 選配送方式 radio（CheckoutForm[deliveryId]）
+    delivery_selected = await evaluate_with_pause_check(tab, """
+        (function() {
+            var radios = Array.from(document.querySelectorAll(
+                'input[type="radio"][name*="deliveryId"], input[type="radio"][name*="delivery_id"], ' +
+                'input[type="radio"][id*="deliveryId"], input[type="radio"][id*="delivery_id"]'
+            ));
+            if (radios.length === 0) return 'none';
+            if (!radios[0].checked) {
+                radios[0].click();
+                radios[0].dispatchEvent(new Event('change', {bubbles:true}));
+            }
+            return 'first:' + radios[0].name + '=' + radios[0].value;
+        })()
+    """)
+    debug.log(f"[TIXCRAFT] 選配送方式: {delivery_selected}")
+    await asyncio.sleep(random.uniform(0.5, 0.8))
+
+    # Step 0c: 點「下一步」submitButton（已選完付款/配送方式）
+    agreed = await evaluate_with_pause_check(tab, """
+        (function() {
+            var btn = document.querySelector('#submitButton');
+            if (btn && (btn.textContent || '').includes('下一步')) {
+                btn.click();
+                return 'clicked_next_step';
+            }
+            return null;
+        })()
+    """)
+    if agreed:
+        debug.log(f"[TIXCRAFT] 點下一步: {agreed}")
+        await asyncio.sleep(random.uniform(2.5, 3.0))
+
+    # Step 1: 若下一頁還有信用卡付款方式可選
+    payment_selected2 = await evaluate_with_pause_check(tab, """
+        (function() {
+            var radios = Array.from(document.querySelectorAll('input[type="radio"][name*="payment"]'));
+            for (var r of radios) {
+                var lbl = document.querySelector('label[for="' + r.id + '"]');
+                var txt = lbl ? lbl.textContent : (r.parentElement ? r.parentElement.textContent : '');
+                if (txt.includes('信用卡') || txt.includes('Credit')) {
+                    if (!r.checked) { r.click(); r.dispatchEvent(new Event('change', {bubbles:true})); }
+                    return 'credit:' + r.value;
+                }
+            }
+            return radios.length > 0 ? 'has_radios:' + radios.length : 'none';
+        })()
+    """)
+    debug.log(f"[TIXCRAFT] Step1 付款方式: {payment_selected2}")
+
+    # 等待頁面更新
+    await asyncio.sleep(random.uniform(2.0, 2.5))
+
+    # 抓頁面文字摘要（debug 用，了解目前在哪個步驟）
+    page_text = await evaluate_with_pause_check(tab, """
+        (function() {
+            var main = document.querySelector('main, #main, .main, form, #checkout, .checkout, body');
+            if (!main) return '';
+            return (main.innerText || '').replace(/\\s+/g,' ').substring(0, 500);
+        })()
+    """)
+    debug.log(f"[TIXCRAFT] 頁面文字: {page_text}")
+
+    # 等待信用卡欄位出現
+    await asyncio.sleep(random.uniform(1.0, 1.5))
+
+    # 偵測頁面 DOM（debug 用）
+    dom_info = await evaluate_with_pause_check(tab, """
+        (function() {
+            var inputs = Array.from(document.querySelectorAll('input[type="text"],input[type="tel"],input[type="number"],input[type="password"],input[type="month"]'))
+                .map(i => ({id:i.id, name:i.name, placeholder:i.placeholder, maxLength:i.maxLength, cls:i.className.substring(0,40)}));
+            var selects = Array.from(document.querySelectorAll('select'))
+                .map(s => ({id:s.id, name:s.name, cls:s.className.substring(0,30)}));
+            var btns = Array.from(document.querySelectorAll('button,input[type="submit"]'))
+                .map(b => ({id:b.id, text:(b.textContent||b.value||'').trim().substring(0,30)}));
+            var radios = Array.from(document.querySelectorAll('input[type="radio"]'))
+                .map(r => ({id:r.id, name:r.name, value:r.value, checked:r.checked,
+                             label:(r.parentElement ? r.parentElement.textContent.trim().substring(0,40) : '')}));
+            return {inputs:inputs, selects:selects, btns:btns, radios:radios};
+        })()
+    """)
+    debug.log(f"[TIXCRAFT] checkout DOM: {dom_info}")
+
+    # 填信用卡號
+    expiry_month = card_expiry.split("/")[0] if "/" in card_expiry else ""
+    expiry_year  = card_expiry.split("/")[1] if "/" in card_expiry else ""
+
+    filled = await evaluate_with_pause_check(tab, f"""
+        (function() {{
+            function fill(el, val) {{
+                if (!el) return false;
+                var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                setter.call(el, val);
+                el.dispatchEvent(new Event('input', {{bubbles:true}}));
+                el.dispatchEvent(new Event('change', {{bubbles:true}}));
+                return true;
+            }}
+            var result = {{}};
+
+            // 卡號
+            var cardEl = document.querySelector('#cardNumber, input[name="cardNumber"], input[placeholder*="卡號"], input[placeholder*="Card Number"], input[placeholder*="card"]')
+                      || Array.from(document.querySelectorAll('input')).find(i => i.maxLength >= 16 && i.maxLength <= 19);
+            result.card = fill(cardEl, {repr(card_number)});
+
+            // 有效月份
+            var monthEl = document.querySelector('#expMonth, select[name*="month"], select[name*="Month"], input[name*="month"]');
+            if (monthEl && monthEl.tagName === 'SELECT') {{
+                monthEl.value = {repr(expiry_month)};
+                monthEl.dispatchEvent(new Event('change', {{bubbles:true}}));
+                result.month = true;
+            }} else {{ result.month = fill(monthEl, {repr(expiry_month)}); }}
+
+            // 有效年份（支援 2 位或 4 位年份）
+            var yearEl = document.querySelector('#expYear, select[name*="year"], select[name*="Year"], input[name*="year"], input[name*="Year"]');
+            if (yearEl && yearEl.tagName === 'SELECT') {{
+                var yy = {repr(expiry_year)};  // e.g. "29"
+                var yyyy = yy.length === 2 ? '20' + yy : yy;  // e.g. "2029"
+                // 先試 2 位，再試 4 位
+                if (Array.from(yearEl.options).some(o => o.value === yy)) {{
+                    yearEl.value = yy;
+                }} else if (Array.from(yearEl.options).some(o => o.value === yyyy)) {{
+                    yearEl.value = yyyy;
+                }} else {{
+                    // fallback：找含年份數字的選項
+                    var matched = Array.from(yearEl.options).find(o => o.value.includes(yy));
+                    if (matched) yearEl.value = matched.value;
+                }}
+                yearEl.dispatchEvent(new Event('change', {{bubbles:true}}));
+                result.year = yearEl.value;
+            }} else {{ result.year = fill(yearEl, {repr(expiry_year)}); }}
+
+            // CVV
+            var cvvEl = document.querySelector('#cvv, input[name="cvv"], input[name="CVV"], input[placeholder*="CVV"], input[placeholder*="CVC"], input[placeholder*="安全碼"]')
+                     || Array.from(document.querySelectorAll('input')).find(i => i.maxLength === 3 || i.maxLength === 4);
+            result.cvv = fill(cvvEl, {repr(card_cvv)});
+
+            // 持卡人
+            var nameEl = document.querySelector('#cardHolder, input[name*="holder"], input[name*="Holder"], input[placeholder*="持卡"], input[placeholder*="姓名"], input[placeholder*="Name"]');
+            result.name = fill(nameEl, {repr(card_name)});
+
+            return result;
+        }})()
+    """)
+    debug.log(f"[TIXCRAFT] 信用卡填入結果: {filled}")
+    debug.log("[TIXCRAFT] 信用卡已自動填入，請確認後手動按送出")
+
+
 async def nodriver_tixcraft_main(tab, url, config_dict, ocr, Captcha_Browser):
     # 函數開始時檢查暫停
     if await check_and_handle_pause(config_dict):
@@ -3080,6 +3358,13 @@ async def nodriver_tixcraft_main(tab, url, config_dict, ocr, Captcha_Browser):
     else:
         _state["fail_list"] = []
 
+    # 玉山卡友前六碼自動驗證（僅限卡友專區，需在設定檔開啟 tixcraft.auto_card_prefix_verify）
+    if config_dict.get("tixcraft", {}).get("auto_card_prefix_verify", False):
+        if not _state.get("card_prefix_verified", False):
+            card_prefix_handled = await nodriver_tixcraft_card_prefix_verify(tab, config_dict)
+            if card_prefix_handled:
+                _state["card_prefix_verified"] = True
+
     # main app, to select ticket number.
     if '/ticket/ticket/' in url:
         domain_name = url.split('/')[2]
@@ -3104,6 +3389,11 @@ async def nodriver_tixcraft_main(tab, url, config_dict, ocr, Captcha_Browser):
                 if _state["elapsed_time"] != bot_elapsed_time:
                     print("bot elapsed time:", "{:.3f}".format(bot_elapsed_time))
                 _state["elapsed_time"] = bot_elapsed_time
+
+        # 自動填入信用卡資訊
+        if not _state.get("checkout_filled", False):
+            await _auto_fill_checkout(tab, config_dict)
+            _state["checkout_filled"] = True
 
         # Always set is_quit_bot when checkout page is detected (not just in headless mode)
         if not _state["is_popup_checkout"]:
